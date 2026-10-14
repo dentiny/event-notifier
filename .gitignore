@@ -33,3 +33,7 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Local Android toolchains and generated artifacts
+.toolchain
+dist/
