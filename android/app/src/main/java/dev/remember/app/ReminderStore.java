@@ -11,11 +11,19 @@ import java.time.LocalDateTime;
 
 /** All SQL uses Android's SQLite implementation in the app's private database directory. */
 final class ReminderStore extends SQLiteOpenHelper {
-    static final int VERSION = 2;
+    static final int VERSION = 3;
     ReminderStore(Context context) { this(context, "reminders.sqlite"); }
     ReminderStore(Context context, String databaseName) {
         super(context.getApplicationContext(), databaseName, null, VERSION);
         setWriteAheadLoggingEnabled(true);
+    }
+    @Override public void onConfigure(SQLiteDatabase db) {
+        db.setForeignKeyConstraintsEnabled(true);
+    }
+    private void createDeliveries(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS deliveries (" +
+            "event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE," +
+            "expected_at TEXT NOT NULL, retry_at INTEGER NOT NULL DEFAULT 0)");
     }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE IF NOT EXISTS events (" +
@@ -23,10 +31,12 @@ final class ReminderStore extends SQLiteOpenHelper {
             "title TEXT NOT NULL, notes TEXT NOT NULL, start_at TEXT NOT NULL," +
             "recurrence TEXT NOT NULL, enabled INTEGER NOT NULL," +
             "completed INTEGER NOT NULL DEFAULT 0, next_at TEXT)");
+        createDeliveries(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         // Version 1 stored recurrence as a JSON string, including quotes. Preserve every event.
         if (oldVersion < 2) db.execSQL("UPDATE events SET recurrence = trim(recurrence, '\"')");
+        if (oldVersion < 3) createDeliveries(db);
     }
     Object execute(JSONObject request, LocalDateTime now) throws Exception {
         SQLiteDatabase db = getWritableDatabase();
@@ -35,6 +45,14 @@ final class ReminderStore extends SQLiteOpenHelper {
                 JSONArray items = new JSONArray();
                 try (Cursor rows = db.query("events", null, null, null, null, null, "enabled DESC, completed ASC, next_at ASC, id DESC")) {
                     while (rows.moveToNext()) items.put(event(rows));
+                }
+                return items;
+            }
+            case "pending": {
+                JSONArray items = new JSONArray();
+                try (Cursor rows = db.rawQuery("SELECT events.*, deliveries.retry_at FROM deliveries " +
+                    "JOIN events ON events.id = deliveries.event_id ORDER BY deliveries.retry_at, events.id", null)) {
+                    while (rows.moveToNext()) items.put(event(rows).put("retry_at", rows.getLong(rows.getColumnIndexOrThrow("retry_at"))));
                 }
                 return items;
             }
@@ -49,21 +67,33 @@ final class ReminderStore extends SQLiteOpenHelper {
                 if (enabled && item.getBoolean("completed")) throw new IllegalArgumentException("Edit the reminder time before re-enabling a completed reminder");
                 String next = nullable(item, "next_at");
                 Recurrence rule = Recurrence.fromValue(item.getString("recurrence"));
-                if (enabled && rule != Recurrence.ONCE)
+                if (enabled && !item.getBoolean("enabled") && rule != Recurrence.ONCE)
                     next = stamp(rule.next(Core.parse(item.getString("start_at")), now, true));
                 ContentValues values = new ContentValues();
                 values.put("enabled", enabled ? 1 : 0); putNullable(values, "next_at", next);
-                db.update("events", values, "id=?", new String[]{Long.toString(id)});
-                return require(db, id);
+                db.beginTransaction();
+                try {
+                    if (!enabled) clearDelivery(db, id);
+                    db.update("events", values, "id=?", new String[]{Long.toString(id)});
+                    db.setTransactionSuccessful();
+                    return require(db, id);
+                } finally { db.endTransaction(); }
             }
             case "fire": return fire(db, request, now);
+            case "ack": return acknowledge(db, request, now);
+            case "retry": {
+                ContentValues values = new ContentValues(); values.put("retry_at", request.getLong("retry_at"));
+                db.update("deliveries", values, "event_id=? AND expected_at=?",
+                    new String[]{Long.toString(request.getLong("id")), request.getString("expected_at")});
+                return JSONObject.NULL;
+            }
             default: throw new IllegalArgumentException("Invalid request parameters");
         }
     }
     private JSONObject save(SQLiteDatabase db, JSONObject request, LocalDateTime now) throws Exception {
-        String title = request.getString("title").trim();
+        String title = request.getString("title");
         String notes = request.getString("notes");
-        if (title.isEmpty() || title.codePointCount(0, title.length()) > 120)
+        if (title.trim().isEmpty() || title.codePointCount(0, title.length()) > 120)
             throw new IllegalArgumentException("Title must contain 1 to 120 characters");
         if (notes.codePointCount(0, notes.length()) > 2000) throw new IllegalArgumentException("Notes must not exceed 2,000 characters");
         String start = request.getString("start_at");
@@ -83,9 +113,16 @@ final class ReminderStore extends SQLiteOpenHelper {
         values.put("title", title); values.put("notes", notes); values.put("start_at", start);
         values.put("recurrence", rule.value()); values.put("enabled", enabled ? 1 : 0); values.put("completed", 0);
         putNullable(values, "next_at", next);
-        if (id == null) id = db.insertOrThrow("events", null, values);
-        else db.update("events", values, "id=?", new String[]{Long.toString(id)});
-        return require(db, id);
+        db.beginTransaction();
+        try {
+            if (id == null) id = db.insertOrThrow("events", null, values);
+            else {
+                if (!unchanged || !enabled || resumingRepeat) clearDelivery(db, id);
+                db.update("events", values, "id=?", new String[]{Long.toString(id)});
+            }
+            db.setTransactionSuccessful();
+            return require(db, id);
+        } finally { db.endTransaction(); }
     }
     private Object fire(SQLiteDatabase db, JSONObject request, LocalDateTime now) throws Exception {
         db.beginTransactionNonExclusive();
@@ -95,6 +132,23 @@ final class ReminderStore extends SQLiteOpenHelper {
             JSONObject item = get(db, id);
             if (item == null || !item.getBoolean("enabled") || item.getBoolean("completed")
                 || !expected.equals(nullable(item, "next_at")) || Core.parse(expected).isAfter(now)) return JSONObject.NULL;
+            ContentValues delivery = new ContentValues();
+            delivery.put("event_id", id); delivery.put("expected_at", expected); delivery.put("retry_at", 0);
+            if (db.insertWithOnConflict("deliveries", null, delivery, SQLiteDatabase.CONFLICT_IGNORE) == -1) return JSONObject.NULL;
+            db.setTransactionSuccessful();
+            return item;
+        } finally { db.endTransaction(); }
+    }
+    private Object acknowledge(SQLiteDatabase db, JSONObject request, LocalDateTime now) throws Exception {
+        db.beginTransactionNonExclusive();
+        try {
+            long id = request.getLong("id");
+            String expected = request.getString("expected_at");
+            JSONObject item = get(db, id);
+            if (item == null || !item.getBoolean("enabled") || item.getBoolean("completed")
+                || !expected.equals(nullable(item, "next_at"))) return JSONObject.NULL;
+            int removed = db.delete("deliveries", "event_id=? AND expected_at=?", new String[]{Long.toString(id), expected});
+            if (removed == 0) return JSONObject.NULL;
             Recurrence rule = Recurrence.fromValue(item.getString("recurrence"));
             LocalDateTime expectedTime = Core.parse(expected);
             LocalDateTime after = now.isAfter(expectedTime) ? now : expectedTime;
@@ -104,8 +158,11 @@ final class ReminderStore extends SQLiteOpenHelper {
             putNullable(values, "next_at", next); values.put("enabled", completed ? 0 : 1); values.put("completed", completed ? 1 : 0);
             db.update("events", values, "id=?", new String[]{Long.toString(id)});
             db.setTransactionSuccessful();
-            return item;
+            return require(db, id);
         } finally { db.endTransaction(); }
+    }
+    private static void clearDelivery(SQLiteDatabase db, long id) {
+        db.delete("deliveries", "event_id=?", new String[]{Long.toString(id)});
     }
     private JSONObject require(SQLiteDatabase db, long id) throws Exception {
         JSONObject item = get(db, id);

@@ -23,6 +23,8 @@ public final class MainActivity extends Activity {
     private static final Recurrence[] RULES = {Recurrence.ONCE, Recurrence.DAILY, Recurrence.WEEKLY, Recurrence.MONTHLY, Recurrence.YEARLY};
     private static final String[] LABELS = {"One-time", "Daily", "Weekly", "Monthly", "Yearly · Birthday / anniversary"};
     private LinearLayout root, content;
+    private ScrollView reminderScroll;
+    private int restoreScrollY = -1;
     private int filter;
     private JSONArray events = new JSONArray();
     private boolean busy;
@@ -53,6 +55,7 @@ public final class MainActivity extends Activity {
         root.requestApplyInsets();
         if (state != null) {
             filter = state.getInt("filter", 0);
+            restoreScrollY = state.getInt("scroll_y", 0);
             if (state.containsKey("draft")) {
                 try {
                     JSONObject draft = new JSONObject(state.getString("draft"));
@@ -73,6 +76,7 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() { if (editor != null) editor.dismiss(); handler.removeCallbacksAndMessages(null); super.onDestroy(); }
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state); state.putInt("filter", filter);
+        state.putInt("scroll_y", reminderScroll == null ? 0 : reminderScroll.getScrollY());
         if (editor != null && editor.isShowing()) {
             try { state.putString("draft", draft().toString()); if (editingEvent != null) state.putString("original", editingEvent.toString()); }
             catch (JSONException ignored) { }
@@ -82,7 +86,7 @@ public final class MainActivity extends Activity {
         Core.WORK.execute(() -> {
             try {
                 JSONArray items = Core.list(getApplicationContext());
-                runOnUiThread(() -> { if (!isDestroyed()) { events = items; render(); } });
+                runOnUiThread(() -> { if (!isDestroyed()) { events = items; render(); restoreScrollY = -1; } });
             } catch (Exception e) { report(e); }
         });
     }
@@ -118,8 +122,15 @@ public final class MainActivity extends Activity {
         b.setBackground(shape(background, 14)); b.setMinHeight(dp(48)); b.setOnClickListener(v -> action.run()); b.setFocusable(true); return b;
     }
     private void render() {
+        int scrollY = restoreScrollY >= 0 ? restoreScrollY : reminderScroll == null ? 0 : reminderScroll.getScrollY();
         root.removeAllViews();
-        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
+        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); reminderScroll = scroll;
+        scroll.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                scroll.scrollTo(0, scrollY);
+                scroll.removeOnLayoutChangeListener(this);
+            }
+        });
         content = column(); content.setPadding(dp(24), dp(22), dp(24), dp(24)); scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout brand = new LinearLayout(this); brand.setGravity(Gravity.CENTER_VERTICAL);
@@ -155,7 +166,7 @@ public final class MainActivity extends Activity {
         String[] names = {"Upcoming " + active, "Paused " + paused, "Completed " + completed};
         for (int i = 0; i < 3; i++) {
             final int f = i;
-            TextView tab = button(names[i], filter == i ? PAPER : MUTED, filter == i ? INK : PAPER, () -> { filter = f; render(); });
+            TextView tab = button(names[i], filter == i ? PAPER : MUTED, filter == i ? INK : PAPER, () -> { filter = f; restoreScrollY = -1; reminderScroll.scrollTo(0, 0); render(); });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1); if (i < 2) lp.rightMargin = dp(5); tabs.addView(tab, lp);
         }
         content.addView(tabs); space(content, 16);
@@ -211,7 +222,7 @@ public final class MainActivity extends Activity {
     }
     private int ruleIndex(Recurrence rule) { for (int i = 0; i < RULES.length; i++) if (RULES[i] == rule) return i; throw new IllegalArgumentException("Unsupported recurrence in reminder editor: " + rule); }
     private EditText input(String hint, int max) {
-        EditText v = new EditText(this); v.setHint(hint); v.setTextSize(16); v.setTextColor(INK); v.setPadding(dp(10), dp(10), dp(10), dp(10)); v.setFilters(new InputFilter[]{ new InputFilter.LengthFilter(max) }); return v;
+        EditText v = new EditText(this); v.setHint(hint); v.setTextSize(16); v.setTextColor(INK); v.setPadding(dp(10), dp(10), dp(10), dp(10)); v.setFilters(new InputFilter[]{ new CodePointLengthFilter(max) }); return v;
     }
     private void label(LinearLayout l, String s) { space(l, 16); l.addView(text(s, 12, MUTED, true)); space(l, 5); }
     private void openEditor(JSONObject item, JSONObject restored) {

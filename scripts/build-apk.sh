@@ -10,7 +10,10 @@ cd "$ROOT"
 printf 'sdk.dir=%s\n' "$ANDROID_HOME" > android/local.properties
 "$TOOLS/gradle-8.11.1/bin/gradle" -p android --no-daemon assembleDebug lintDebug
 mkdir -p dist
-cp android/app/build/outputs/apk/debug/app-debug.apk dist/remember-0.1.0.apk
-"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose dist/remember-0.1.0.apk
-shasum -a 256 dist/remember-0.1.0.apk > dist/remember-0.1.0.apk.sha256
-printf '\nAPK: %s/dist/remember-0.1.0.apk\n' "$ROOT"
+VERSION="$(sed -n "s/.*versionName '\([^']*\)'.*/\1/p" android/app/build.gradle)"
+test -n "$VERSION"
+APK="remember-$VERSION.apk"
+cp android/app/build/outputs/apk/debug/app-debug.apk "dist/$APK"
+"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "dist/$APK"
+(cd dist && shasum -a 256 "$APK" > "$APK.sha256")
+printf '\nAPK: %s/dist/%s\n' "$ROOT" "$APK"

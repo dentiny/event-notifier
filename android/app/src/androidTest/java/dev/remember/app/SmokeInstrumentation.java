@@ -11,15 +11,18 @@ import java.util.*;
 /** Runs against the real Android SQLite file, AlarmManager and notification system. */
 public final class SmokeInstrumentation extends Instrumentation {
     private int assertions;
+    private String mode;
     private final ArrayList<Integer> created = new ArrayList<>();
     private void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); assertions++; }
-    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
+    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); mode=arguments.getString("mode", "all"); start(); }
     @Override public void onStart() {
+        if (!mode.equals("all")) { PermissionChecks.run(this,mode); return; }
         Bundle result = new Bundle();
         Context c = getTargetContext();
         int resultCode = Activity.RESULT_OK;
         try {
             StoreChecks.run(c, this::check);
+            ReliabilityChecks.run(this, this::check);
             Scheduler.channel(c);
             check(Scheduler.notificationsAllowed(c), "Grant POST_NOTIFICATIONS before running");
             String due = LocalDateTime.now().plusSeconds(4).withNano(0).format(Core.FORMAT);
@@ -30,7 +33,8 @@ public final class SmokeInstrumentation extends Instrumentation {
             check(find(c, once.getInt("id")).getString("next_at").equals(due), "DB reopen persistence");
             Scheduler.rebuild(c);
             long deadline = SystemClock.elapsedRealtime() + 15000;
-            while (SystemClock.elapsedRealtime() < deadline && !find(c, once.getInt("id")).getBoolean("completed")) SystemClock.sleep(150);
+            while (SystemClock.elapsedRealtime() < deadline &&
+                (!find(c, once.getInt("id")).getBoolean("completed") || find(c, repeat.getInt("id")).getString("next_at").equals(due))) SystemClock.sleep(150);
             JSONObject firedOnce = find(c, once.getInt("id"));
             JSONObject firedRepeat = find(c, repeat.getInt("id"));
             check(firedOnce.getBoolean("completed") && !firedOnce.getBoolean("enabled"), "Actual alarm completes one-shot");
@@ -61,7 +65,9 @@ public final class SmokeInstrumentation extends Instrumentation {
                 JSONObject overlapEvent = (JSONObject) Core.callAt(c,new JSONObject().put("action","save").put("id",JSONObject.NULL).put("title","DST catch-up").put("notes","").put("start_at","2026-11-01T01:30:00").put("recurrence","once").put("enabled",true),"2026-10-31T00:00:00");
                 created.add(overlapEvent.getInt("id"));
                 Object overlapClaim = Scheduler.claimDue(c,overlapEvent,Instant.parse("2026-11-01T09:15:00Z").toEpochMilli());
-                check(overlapClaim != JSONObject.NULL && find(c,overlapEvent.getInt("id")).getBoolean("completed"), "Overdue first DST hour delivers during repeated hour");
+                check(overlapClaim != JSONObject.NULL, "Overdue first DST hour enqueues during repeated hour");
+                Core.callAt(c,new JSONObject().put("action","ack").put("id",overlapEvent.getInt("id")).put("expected_at","2026-11-01T01:30:00"),"2026-11-01T01:30:00");
+                check(find(c,overlapEvent.getInt("id")).getBoolean("completed"), "DST delivery acknowledgment completes once");
             } finally { TimeZone.setDefault(old); }
             Activity activity = startActivitySync(new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             waitForIdleSync(); check(activity != null && uiWait("+  New reminder") != null,"MainActivity launches");
