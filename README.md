@@ -38,4 +38,4 @@ Remember works without an internet connection. Your reminders stay on your phone
 
 ---
 
-[Developer guide](docs/DEVELOPMENT.md) · [MIT license](LICENSE) · [Report an issue](https://github.com/dentiny/event-notifier/issues)
+[MIT license](LICENSE) · [Report an issue](https://github.com/dentiny/event-notifier/issues)
