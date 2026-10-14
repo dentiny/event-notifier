@@ -1,71 +1,41 @@
 # Remember
 
-An offline Android reminder app built entirely with native Java. Android's SQLiteOpenHelper stores reminders on the device, Java calculates recurring dates, and AlarmManager schedules system notifications. No server or internet permission is required.
+**Make room for what matters.**
 
-## Install
+A quiet place for birthdays, anniversaries, and the things you only need to remember once. Set a reminder, choose its rhythm, and let your phone give you a nudge.
 
-Build output: `dist/remember-0.1.0.apk`. Copy it to your phone, open it in a file manager, and allow installation from that source when prompted. Requires Android 8.0 (API 26) or later and uses the system SQLite implementation.
+[**Download for Android ↓**](https://github.com/dentiny/event-notifier/releases/download/v0.1.0/remember-0.1.0.apk) · [Release notes](https://github.com/dentiny/event-notifier/releases/tag/v0.1.0)
 
-1. Add a title, repeat interval, date, time, and optional notes.
-2. Allow Remember to send notifications.
-3. Tap the exact-reminder prompt on the home screen and allow alarms and reminders in system settings. Without this permission, standard alarms still work but may be delayed.
-4. Try a reminder a few minutes in the future. Some phones also require allowing background activity in battery settings.
+Preview v0.1.0 · Android 8.0+ · Works offline · No account needed · Free and open source
 
-The APK uses debug signing for direct installation and testing. Updates with the same signing key preserve app data. A different key requires uninstalling, which deletes the database. Production distribution requires a release signing key.
+<p>
+  <img src="docs/images/upcoming.png" alt="Remember showing an upcoming birthday and a one-time reminder to pick up a cake" width="300">
+  &nbsp;
+  <img src="docs/images/edit-reminder.png" alt="Reminder editor with a yearly birthday, date, time, notes, and an enable switch" width="300">
+</p>
 
-## Features and rules
+*Your next reminder at a glance. A simple form to make it yours.*
 
-- Create, edit, delete, pause, and resume reminders. View upcoming, paused, and completed items.
-- One-time reminders must be scheduled in the future and become completed after delivery. Edit the time to enable them again.
-- Daily, weekly, monthly, and yearly recurrence use the original date as their anchor. Yearly recurrence keeps the same month, day, and local time: February 7, 2015 → February 7, 2016. It works for birthdays and anniversaries.
-- Month-end dates clamp to the last day of shorter months while retaining the original anchor: January 31 → February 28 → March 31.
-- February 29 birthdays use February 28 in non-leap years and February 29 in leap years.
-- Reminders follow the phone's local time. Reboot, app updates, clock changes, and time-zone changes reschedule pending reminders.
-- Missing daylight-saving times move forward, such as 02:30 → 03:30. Repeated local times use the first occurrence.
-- Overdue reminders catch up once after the phone restarts and unlocks. Recurring reminders then advance to the next future date rather than delivering every missed occurrence.
-- Resuming a paused recurring reminder selects its next future date. Resuming an overdue one-time reminder delivers it as soon as possible.
-- A single alarm batches simultaneous reminders. SQLite transactions reject duplicate, deleted, paused, or outdated callbacks.
+## For the moments that matter
 
-The database is stored in the app's private `databases/reminders.sqlite` file. Automatic backup is disabled. Uninstalling deletes the data; cloud sync and import/export are not included. After force-stopping the app, reopen it to restore scheduling. System sleep policies, device-specific background restrictions, and notification permissions can affect delivery.
+- **Birthdays and anniversaries.** Repeat on the same date each year, at the time you choose.
+- **One-off plans.** Remember to pick up a cake, make a call, or bring something along.
+- **Everyday rhythms.** Choose daily, weekly, or monthly reminders for regular routines.
+- **Plans change.** Edit a reminder or pause it until you're ready to resume.
+- **Everything in its place.** Browse upcoming, paused, and completed reminders.
 
-## Build on Apple Silicon macOS
+## Get started
 
-This repository is self-contained. The setup script requires curl and unzip and stores Java, the Android SDK, and Gradle in the ignored `.toolchain/` directory. Android Studio is optional. Running setup accepts the Android SDK licenses.
+1. [Download the APK](https://github.com/dentiny/event-notifier/releases/download/v0.1.0/remember-0.1.0.apk) on your phone and open it. Allow installation from your browser or file manager if Android asks.
+2. Open **Remember**, tap **New reminder**, and choose a title, date, time, and repeat interval. Add a note if you like.
+3. Allow notifications and follow the app's prompt to enable exact reminders. You can revisit these permissions through **Reminder settings**.
 
-```sh
-./scripts/setup-android.sh
-./scripts/build-apk.sh
-```
+Reminders follow your phone's local time. Some phones may also need background activity allowed in battery settings to deliver reminders promptly.
 
-The build uses Java 17, Gradle 8.11.1, Android Gradle Plugin 8.9.2, and SDK 35. It runs Android lint and verifies the APK signature, then writes the APK and its SHA-256 checksum to `dist/`. Set `JAVA_HOME` and `ANDROID_HOME` to use existing installations. The setup script downloads Java for Apple Silicon macOS; other platforms can supply their own Java and Android SDK.
+## Yours, on your device
 
-## Verify
+Remember works without an internet connection. Your reminders stay on your phone, with no account, server, or cloud sync. Uninstalling the app removes them.
 
-```sh
-./scripts/test-recurrence.sh
-# With an Android 13+ emulator or device connected through adb:
-./scripts/test-android.sh
-```
+---
 
-Java recurrence checks cover leap years, month-end dates, daily and weekly intervals, and time boundaries. Android instrumentation checks real SQLite persistence, CRUD, concurrent transactions, database upgrades, alarm delivery, system notifications, daylight-saving transitions, and UI creation, pause, and deletion. Tests grant notification and exact-alarm permissions and clean up the reminders they create.
-
-Optional emulator setup:
-
-```sh
-./scripts/setup-emulator.sh
-export ANDROID_HOME="$PWD/.toolchain/android-sdk"
-export ANDROID_USER_HOME="$PWD/.toolchain/android-user"
-export ANDROID_AVD_HOME="$PWD/.toolchain/avd"
-"$ANDROID_HOME/emulator/emulator" -avd remember-api35 -no-window -no-audio -no-boot-anim
-```
-
-## Source layout
-
-- `android/app/src/main/java/dev/remember/app/ReminderStore.java`: SQLiteOpenHelper, CRUD, schema upgrades, and delivery transactions.
-- `android/app/src/main/java/dev/remember/app/Recurrence.java`: Typed recurrence enum and calendar rules. SQLite and JSON retain stable lowercase values (`once`, `daily`, `weekly`, `monthly`, `yearly`); enum ordinals are never persisted.
-- `android/app/src/test/java/dev/remember/app/RecurrenceTest.java`: Calendar-rule checks.
-- `android/app/src/main/java/dev/remember/app/`: UI, database access, permissions, alarms, notifications, and restore receivers.
-- `android/app/src/androidTest/`: Tests in a real Android environment.
-- `scripts/`: Toolchain setup, APK builds, and verification.
-
-Platform behavior follows the Android documentation for [notification permissions](https://developer.android.com/develop/ui/views/notifications/notification-permission) and [alarms](https://developer.android.com/develop/background-work/services/alarms).
+[Developer guide](docs/DEVELOPMENT.md) · [MIT license](LICENSE) · [Report an issue](https://github.com/dentiny/event-notifier/issues)
