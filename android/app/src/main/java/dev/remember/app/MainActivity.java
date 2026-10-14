@@ -101,7 +101,7 @@ public final class MainActivity extends Activity {
     }
     private void report(Exception e) {
         if (!(e instanceof IllegalArgumentException)) Core.failure(getApplicationContext(), e);
-        runOnUiThread(() -> { if (!isDestroyed()) { toast(e.getMessage() == null ? "操作失败" : e.getMessage()); render(); } });
+        runOnUiThread(() -> { if (!isDestroyed()) { toast(e.getMessage() == null ? "Operation failed" : e.getMessage()); render(); } });
     }
     private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }
     private int dp(float n) { return Math.round(n * getResources().getDisplayMetrics().density); }

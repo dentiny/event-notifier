@@ -10,7 +10,7 @@ final class Recurrence {
     static void validate(String rule) {
         switch (rule) {
             case "once": case "daily": case "weekly": case "monthly": case "yearly": return;
-            default: throw new IllegalArgumentException("重复方式无效");
+            default: throw new IllegalArgumentException("Invalid recurrence rule");
         }
     }
     static LocalDateTime next(LocalDateTime anchor, String rule, LocalDateTime after, boolean inclusive) {
@@ -42,7 +42,7 @@ final class Recurrence {
                     year++;
                 }
             }
-            default: throw new IllegalArgumentException("重复方式无效");
+            default: throw new IllegalArgumentException("Invalid recurrence rule");
         }
     }
     private static boolean acceptable(LocalDateTime candidate, LocalDateTime after, boolean inclusive) {

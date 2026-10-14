@@ -46,7 +46,7 @@ final class ReminderStore extends SQLiteOpenHelper {
                 long id = request.getLong("id");
                 JSONObject item = require(db, id);
                 boolean enabled = request.getBoolean("enabled");
-                if (enabled && item.getBoolean("completed")) throw new IllegalArgumentException("已完成的提醒请编辑时间后重新开启");
+                if (enabled && item.getBoolean("completed")) throw new IllegalArgumentException("Edit the reminder time before re-enabling a completed reminder");
                 String next = nullable(item, "next_at");
                 if (enabled && !item.getString("recurrence").equals("once"))
                     next = stamp(Recurrence.next(Core.parse(item.getString("start_at")), item.getString("recurrence"), now, true));
@@ -56,18 +56,18 @@ final class ReminderStore extends SQLiteOpenHelper {
                 return require(db, id);
             }
             case "fire": return fire(db, request, now);
-            default: throw new IllegalArgumentException("请求参数无效");
+            default: throw new IllegalArgumentException("Invalid request parameters");
         }
     }
     private JSONObject save(SQLiteDatabase db, JSONObject request, LocalDateTime now) throws Exception {
         String title = request.getString("title").trim();
         String notes = request.getString("notes");
         if (title.isEmpty() || title.codePointCount(0, title.length()) > 120)
-            throw new IllegalArgumentException("标题需为 1–120 个字符");
-        if (notes.codePointCount(0, notes.length()) > 2000) throw new IllegalArgumentException("备注不能超过 2000 个字符");
+            throw new IllegalArgumentException("Title must contain 1 to 120 characters");
+        if (notes.codePointCount(0, notes.length()) > 2000) throw new IllegalArgumentException("Notes must not exceed 2,000 characters");
         String start = request.getString("start_at");
         LocalDateTime anchor = Core.parse(start);
-        if (anchor.getYear() < 1970 || anchor.getYear() > 9998) throw new IllegalArgumentException("年份需在 1970–9998 之间");
+        if (anchor.getYear() < 1970 || anchor.getYear() > 9998) throw new IllegalArgumentException("Year must be between 1970 and 9998");
         String rule = request.getString("recurrence"); Recurrence.validate(rule);
         boolean enabled = request.getBoolean("enabled");
         Long id = request.isNull("id") ? null : request.getLong("id");
@@ -75,7 +75,7 @@ final class ReminderStore extends SQLiteOpenHelper {
         boolean unchanged = existing != null && existing.getString("start_at").equals(start)
             && existing.getString("recurrence").equals(rule) && !existing.getBoolean("completed");
         if (rule.equals("once") && anchor.isBefore(now) && !unchanged)
-            throw new IllegalArgumentException("一次性提醒请选择未来的时间");
+            throw new IllegalArgumentException("One-time reminders must be scheduled in the future");
         boolean resumingRepeat = enabled && !rule.equals("once") && existing != null && !existing.getBoolean("enabled");
         String next = unchanged && !resumingRepeat ? nullable(existing, "next_at") : stamp(Recurrence.next(anchor, rule, now, true));
         ContentValues values = new ContentValues();
@@ -108,7 +108,7 @@ final class ReminderStore extends SQLiteOpenHelper {
     }
     private JSONObject require(SQLiteDatabase db, long id) throws Exception {
         JSONObject item = get(db, id);
-        if (item == null) throw new IllegalArgumentException("提醒不存在");
+        if (item == null) throw new IllegalArgumentException("Reminder not found");
         return item;
     }
     private JSONObject get(SQLiteDatabase db, long id) throws Exception {

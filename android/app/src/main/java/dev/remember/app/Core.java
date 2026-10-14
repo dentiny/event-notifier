@@ -17,7 +17,7 @@ final class Core {
     static String now() { return LocalDateTime.now().format(FORMAT); }
     static LocalDateTime parse(String time) {
         try { return LocalDateTime.parse(time, FORMAT); }
-        catch (DateTimeParseException e) { throw new IllegalArgumentException("日期或时间无效", e); }
+        catch (DateTimeParseException e) { throw new IllegalArgumentException("Invalid date or time", e); }
     }
     static Object call(Context context, JSONObject request) throws Exception { return callAt(context, request, now()); }
     static Object callAt(Context context, JSONObject request, String localNow) throws Exception {
@@ -28,7 +28,7 @@ final class Core {
     static JSONArray list(Context c) throws Exception { return (JSONArray) call(c, new JSONObject().put("action", "list")); }
     static void failure(Context c, Throwable e) {
         android.util.Log.e("Remember", "Reminder operation failed", e);
-        c.getSharedPreferences("status", 0).edit().putString("error", e.getMessage() == null ? "提醒操作失败" : e.getMessage()).apply();
+        c.getSharedPreferences("status", 0).edit().putString("error", e.getMessage() == null ? "Reminder operation failed" : e.getMessage()).apply();
     }
     private Core() {}
 }
