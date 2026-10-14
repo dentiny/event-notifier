@@ -15,6 +15,7 @@ final class StoreChecks {
             expectInvalid(store, save("", "2026-01-02T09:00:00", "once"), check);
             expectInvalid(store, save("Past reminder", "2025-12-01T09:00:00", "once"), check);
             expectInvalid(store, save("Date", "2026-02-30T09:00:00", "yearly"), check);
+            expectInvalid(store, save("Invalid recurrence", "2026-01-02T09:00:00", "invalid"), check);
             JSONObject yearly = (JSONObject) call(store,save("Birthday", "2020-02-29T09:00:00", "yearly"),"2026-01-01T00:00:00");
             int id = yearly.getInt("id");
             check.accept(yearly.getString("next_at").equals("2026-02-28T09:00:00"), "SQLite stores clamped birthday");
@@ -30,6 +31,13 @@ final class StoreChecks {
             JSONObject once=(JSONObject)call(store,save("Concurrent reminder","2026-01-02T09:00:00","once"),"2026-01-01T00:00:00");
             int onceId=once.getInt("id");
             check.accept(call(store,fire(onceId,"2026-01-02T09:00:00"),"2026-01-02T08:59:59") == JSONObject.NULL, "Early callback does not consume event");
+            JSONObject annual = (JSONObject)call(store,save("Annual date","2015-02-07T09:00:00","yearly"),"2015-02-07T09:00:01");
+            check.accept(annual.getString("recurrence").equals("yearly") && annual.getString("next_at").equals("2016-02-07T09:00:00"), "Yearly enum persists its stable value and same calendar date");
+            call(store,fire(annual.getInt("id"),"2016-02-07T09:00:00"),"2016-02-07T09:00:00");
+            JSONArray events=(JSONArray)call(store,new JSONObject().put("action","list"),"2016-02-07T09:00:00");
+            JSONObject advanced=null;
+            for(int i=0;i<events.length();i++) if(events.getJSONObject(i).getInt("id")==annual.getInt("id")) advanced=events.getJSONObject(i);
+            check.accept(advanced != null && advanced.getString("next_at").equals("2017-02-07T09:00:00"), "Yearly delivery advances one calendar year");
             ExecutorService pool=Executors.newFixedThreadPool(2);
             CountDownLatch gate=new CountDownLatch(1);
             try {

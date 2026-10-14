@@ -48,8 +48,9 @@ final class ReminderStore extends SQLiteOpenHelper {
                 boolean enabled = request.getBoolean("enabled");
                 if (enabled && item.getBoolean("completed")) throw new IllegalArgumentException("Edit the reminder time before re-enabling a completed reminder");
                 String next = nullable(item, "next_at");
-                if (enabled && !item.getString("recurrence").equals("once"))
-                    next = stamp(Recurrence.next(Core.parse(item.getString("start_at")), item.getString("recurrence"), now, true));
+                Recurrence rule = Recurrence.fromValue(item.getString("recurrence"));
+                if (enabled && rule != Recurrence.ONCE)
+                    next = stamp(rule.next(Core.parse(item.getString("start_at")), now, true));
                 ContentValues values = new ContentValues();
                 values.put("enabled", enabled ? 1 : 0); putNullable(values, "next_at", next);
                 db.update("events", values, "id=?", new String[]{Long.toString(id)});
@@ -68,19 +69,19 @@ final class ReminderStore extends SQLiteOpenHelper {
         String start = request.getString("start_at");
         LocalDateTime anchor = Core.parse(start);
         if (anchor.getYear() < 1970 || anchor.getYear() > 9998) throw new IllegalArgumentException("Year must be between 1970 and 9998");
-        String rule = request.getString("recurrence"); Recurrence.validate(rule);
+        Recurrence rule = Recurrence.fromValue(request.getString("recurrence"));
         boolean enabled = request.getBoolean("enabled");
         Long id = request.isNull("id") ? null : request.getLong("id");
         JSONObject existing = id == null ? null : require(db, id);
         boolean unchanged = existing != null && existing.getString("start_at").equals(start)
-            && existing.getString("recurrence").equals(rule) && !existing.getBoolean("completed");
-        if (rule.equals("once") && anchor.isBefore(now) && !unchanged)
+            && Recurrence.fromValue(existing.getString("recurrence")) == rule && !existing.getBoolean("completed");
+        if (rule == Recurrence.ONCE && anchor.isBefore(now) && !unchanged)
             throw new IllegalArgumentException("One-time reminders must be scheduled in the future");
-        boolean resumingRepeat = enabled && !rule.equals("once") && existing != null && !existing.getBoolean("enabled");
-        String next = unchanged && !resumingRepeat ? nullable(existing, "next_at") : stamp(Recurrence.next(anchor, rule, now, true));
+        boolean resumingRepeat = enabled && rule != Recurrence.ONCE && existing != null && !existing.getBoolean("enabled");
+        String next = unchanged && !resumingRepeat ? nullable(existing, "next_at") : stamp(rule.next(anchor, now, true));
         ContentValues values = new ContentValues();
         values.put("title", title); values.put("notes", notes); values.put("start_at", start);
-        values.put("recurrence", rule); values.put("enabled", enabled ? 1 : 0); values.put("completed", 0);
+        values.put("recurrence", rule.value()); values.put("enabled", enabled ? 1 : 0); values.put("completed", 0);
         putNullable(values, "next_at", next);
         if (id == null) id = db.insertOrThrow("events", null, values);
         else db.update("events", values, "id=?", new String[]{Long.toString(id)});
@@ -94,11 +95,11 @@ final class ReminderStore extends SQLiteOpenHelper {
             JSONObject item = get(db, id);
             if (item == null || !item.getBoolean("enabled") || item.getBoolean("completed")
                 || !expected.equals(nullable(item, "next_at")) || Core.parse(expected).isAfter(now)) return JSONObject.NULL;
-            String rule = item.getString("recurrence");
+            Recurrence rule = Recurrence.fromValue(item.getString("recurrence"));
             LocalDateTime expectedTime = Core.parse(expected);
             LocalDateTime after = now.isAfter(expectedTime) ? now : expectedTime;
-            String next = stamp(Recurrence.next(Core.parse(item.getString("start_at")), rule, after, false));
-            boolean completed = rule.equals("once");
+            String next = stamp(rule.next(Core.parse(item.getString("start_at")), after, false));
+            boolean completed = rule == Recurrence.ONCE;
             ContentValues values = new ContentValues();
             putNullable(values, "next_at", next); values.put("enabled", completed ? 0 : 1); values.put("completed", completed ? 1 : 0);
             db.update("events", values, "id=?", new String[]{Long.toString(id)});
@@ -123,6 +124,7 @@ final class ReminderStore extends SQLiteOpenHelper {
             int index = row.getColumnIndexOrThrow(key);
             item.put(key, row.isNull(index) ? JSONObject.NULL : row.getString(index));
         }
+        item.put("recurrence", Recurrence.fromValue(item.getString("recurrence")).value());
         item.put("enabled", row.getInt(row.getColumnIndexOrThrow("enabled")) != 0);
         item.put("completed", row.getInt(row.getColumnIndexOrThrow("completed")) != 0);
         return item;

@@ -17,7 +17,7 @@ The APK uses debug signing for direct installation and testing. Updates with the
 
 - Create, edit, delete, pause, and resume reminders. View upcoming, paused, and completed items.
 - One-time reminders must be scheduled in the future and become completed after delivery. Edit the time to enable them again.
-- Daily, weekly, monthly, and yearly recurrence use the original date as their anchor. Yearly recurrence works for birthdays and anniversaries.
+- Daily, weekly, monthly, and yearly recurrence use the original date as their anchor. Yearly recurrence keeps the same month, day, and local time: February 7, 2015 → February 7, 2016. It works for birthdays and anniversaries.
 - Month-end dates clamp to the last day of shorter months while retaining the original anchor: January 31 → February 28 → March 31.
 - February 29 birthdays use February 28 in non-leap years and February 29 in leap years.
 - Reminders follow the phone's local time. Reboot, app updates, clock changes, and time-zone changes reschedule pending reminders.
@@ -62,7 +62,7 @@ export ANDROID_AVD_HOME="$PWD/.toolchain/avd"
 ## Source layout
 
 - `android/app/src/main/java/dev/remember/app/ReminderStore.java`: SQLiteOpenHelper, CRUD, schema upgrades, and delivery transactions.
-- `android/app/src/main/java/dev/remember/app/Recurrence.java`: Java calendar rules.
+- `android/app/src/main/java/dev/remember/app/Recurrence.java`: Typed recurrence enum and calendar rules. SQLite and JSON retain stable lowercase values (`once`, `daily`, `weekly`, `monthly`, `yearly`); enum ordinals are never persisted.
 - `android/app/src/test/java/dev/remember/app/RecurrenceTest.java`: Calendar-rule checks.
 - `android/app/src/main/java/dev/remember/app/`: UI, database access, permissions, alarms, notifications, and restore receivers.
 - `android/app/src/androidTest/`: Tests in a real Android environment.

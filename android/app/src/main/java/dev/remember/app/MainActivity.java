@@ -20,7 +20,7 @@ import java.time.temporal.ChronoUnit;
 
 public final class MainActivity extends Activity {
     private static final int INK = 0xff24382e, GREEN = 0xff236b54, MUTED = 0xff737e75, PAPER = 0xfff5f4ef;
-    private static final String[] RULES = {"once", "daily", "weekly", "monthly", "yearly"};
+    private static final Recurrence[] RULES = {Recurrence.ONCE, Recurrence.DAILY, Recurrence.WEEKLY, Recurrence.MONTHLY, Recurrence.YEARLY};
     private static final String[] LABELS = {"One-time", "Daily", "Weekly", "Monthly", "Yearly · Birthday / anniversary"};
     private LinearLayout root, content;
     private int filter;
@@ -178,8 +178,8 @@ public final class MainActivity extends Activity {
     }
     private void addCard(JSONObject e) {
         LinearLayout card = column(); card.setPadding(dp(18), dp(17), dp(18), dp(17)); card.setBackground(shape(Color.WHITE, 18));
-        String rule = e.optString("recurrence"); int index = ruleIndex(rule);
-        card.addView(text((index == 4 ? "●  " : "◷  ") + LABELS[index], 11, GREEN, true)); space(card, 10);
+        Recurrence rule = Recurrence.fromValue(e.optString("recurrence")); int index = ruleIndex(rule);
+        card.addView(text((rule == Recurrence.YEARLY ? "●  " : "◷  ") + LABELS[index], 11, GREEN, true)); space(card, 10);
         card.addView(text(e.optString("title"), 20, INK, true)); space(card, 8);
         if (!e.optString("notes").isEmpty()) { TextView notes = text(e.optString("notes"), 13, MUTED, false); notes.setMaxLines(2); notes.setEllipsize(android.text.TextUtils.TruncateAt.END); card.addView(notes); space(card, 8); }
         card.addView(text(e.optBoolean("completed") ? "Reminded · " + displayTime(e.optString("start_at")) : displayTime(e.optString("next_at")) + "  ·  " + distance(e.optString("next_at")), 13, MUTED, false));
@@ -209,7 +209,7 @@ public final class MainActivity extends Activity {
             if (days == 1) return "Tomorrow"; return days + " days away";
         } catch (Exception ignored) { return ""; }
     }
-    private int ruleIndex(String rule) { for (int i = 0; i < RULES.length; i++) if (RULES[i].equals(rule)) return i; return 0; }
+    private int ruleIndex(Recurrence rule) { for (int i = 0; i < RULES.length; i++) if (RULES[i] == rule) return i; throw new IllegalArgumentException("Unsupported recurrence in reminder editor: " + rule); }
     private EditText input(String hint, int max) {
         EditText v = new EditText(this); v.setHint(hint); v.setTextSize(16); v.setTextColor(INK); v.setPadding(dp(10), dp(10), dp(10), dp(10)); v.setFilters(new InputFilter[]{ new InputFilter.LengthFilter(max) }); return v;
     }
@@ -234,7 +234,7 @@ public final class MainActivity extends Activity {
         form.addView(text("Uses your phone's local time. Month-end dates use\nthe last day; Feb 29 uses Feb 28 in other years.", 11, MUTED, false));
         label(form, "Notes (optional)"); notesInput = input("e.g. Prepare a gift and remember to call",2000); notesInput.setMinLines(2); notesInput.setMaxLines(4); notesInput.setGravity(Gravity.TOP); form.addView(notesInput);
         space(form, 14); enabledInput = new Switch(this); enabledInput.setText(R.string.enable_reminder); enabledInput.setTextColor(INK); enabledInput.setMinHeight(dp(48)); enabledInput.setChecked(values == null || values.optBoolean("enabled", true)); form.addView(enabledInput);
-        if (values != null) { titleInput.setText(values.optString("title")); notesInput.setText(values.optString("notes")); repeatInput.setSelection(ruleIndex(values.optString("recurrence"))); }
+        if (values != null) { titleInput.setText(values.optString("title")); notesInput.setText(values.optString("notes")); repeatInput.setSelection(ruleIndex(Recurrence.fromValue(values.optString("recurrence")))); }
         if (item != null && item.optBoolean("completed") && restored == null) { chosenTime = LocalDateTime.now().plusHours(1).withSecond(0).withNano(0); enabledInput.setChecked(true); updateDateButtons(form); }
         ScrollView scroll = new ScrollView(this); scroll.addView(form);
         AlertDialog.Builder builder = new AlertDialog.Builder(this).setTitle(item == null ? "New reminder" : "Edit reminder").setView(scroll).setPositiveButton("Save", null).setNegativeButton("Cancel", null);
@@ -261,7 +261,7 @@ public final class MainActivity extends Activity {
         ((TextView)form.findViewWithTag("time")).setText(chosenTime.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm")));
     }
     private JSONObject draft() throws JSONException {
-        return new JSONObject().put("title",titleInput.getText().toString()).put("notes",notesInput.getText().toString()).put("start_at",chosenTime.format(Core.FORMAT)).put("recurrence",RULES[repeatInput.getSelectedItemPosition()]).put("enabled",enabledInput.isChecked());
+        return new JSONObject().put("title",titleInput.getText().toString()).put("notes",notesInput.getText().toString()).put("start_at",chosenTime.format(Core.FORMAT)).put("recurrence",RULES[repeatInput.getSelectedItemPosition()].value()).put("enabled",enabledInput.isChecked());
     }
     private void requestNotifications() {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
