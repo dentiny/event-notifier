@@ -13,8 +13,8 @@ final class Scheduler {
     static final String CHANNEL = "important_reminders";
     static void channel(Context c) {
         NotificationManager nm = c.getSystemService(NotificationManager.class);
-        NotificationChannel channel = new NotificationChannel(CHANNEL, "重要事项提醒", NotificationManager.IMPORTANCE_HIGH);
-        channel.setDescription("生日、纪念日和一次性事项");
+        NotificationChannel channel = new NotificationChannel(CHANNEL, "Important reminders", NotificationManager.IMPORTANCE_HIGH);
+        channel.setDescription("Birthdays, anniversaries, and one-time events");
         channel.enableVibration(true);
         nm.createNotificationChannel(channel);
     }
@@ -74,7 +74,7 @@ final class Scheduler {
             Intent intent = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             PendingIntent content = PendingIntent.getActivity(c, item.getInt("id"), intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             String notes = item.getString("notes");
-            String text = notes.isEmpty() ? "重要的事情，记得留一点时间。" : notes;
+            String text = notes.isEmpty() ? "Make time for what matters." : notes;
             Notification notification = new Notification.Builder(c, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification).setContentTitle(item.getString("title"))
                 .setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text))
